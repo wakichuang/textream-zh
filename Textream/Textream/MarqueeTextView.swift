@@ -27,10 +27,39 @@ extension Unicode.Scalar {
     }
 }
 
+extension Character {
+    /// Full-width / CJK punctuation that should never be grouped with a
+    /// neighbouring Latin run (e.g. `，` `。` `「` `」` `、` `……` `——`).
+    var isCJKPunctuation: Bool {
+        guard isPunctuation, let v = unicodeScalars.first?.value else { return false }
+        return (v >= 0x3000 && v <= 0x303F)    // CJK Symbols and Punctuation
+            || (v >= 0xFE10 && v <= 0xFE1F)    // Vertical Forms
+            || (v >= 0xFE30 && v <= 0xFE4F)    // CJK Compatibility Forms
+            || (v >= 0xFF00 && v <= 0xFFEF)    // Halfwidth and Fullwidth Forms
+            || (v >= 0x2010 && v <= 0x2027)    // Dashes, quotes, ellipsis
+    }
+
+    /// Opening brackets and quotes (`「` `（` `《` `“` `(`) belong to the word after them.
+    var isOpeningPunctuation: Bool {
+        guard let category = unicodeScalars.first?.properties.generalCategory else { return false }
+        return category == .openPunctuation || category == .initialPunctuation
+    }
+}
+
 /// Splits text into display-ready words. CJK characters (Chinese, Japanese, Korean)
 /// are split into individual characters so the flow layout can wrap them properly.
+/// Punctuation never stands alone: a standalone punctuation mark would be treated
+/// as an annotation (italic, dimmed) and its width is mis-measured, so it is
+/// attached to the neighbouring word (`歲，`, `「我`, `作。」`).
 func splitTextIntoWords(_ text: String) -> [String] {
-    let tokens = text.replacingOccurrences(of: "\n", with: " ")
+    // Attach punctuation within a line only, so that
+    // `paragraphBreakWordIndices` (which counts words line by line) stays in sync.
+    text.split(omittingEmptySubsequences: false, whereSeparator: { $0.isNewline })
+        .flatMap { attachPunctuation(splitLineIntoWords(String($0))) }
+}
+
+private func splitLineIntoWords(_ line: String) -> [String] {
+    let tokens = line
         .split(omittingEmptySubsequences: true, whereSeparator: { $0.isWhitespace })
         .map { String($0) }
 
@@ -41,10 +70,11 @@ func splitTextIntoWords(_ text: String) -> [String] {
             continue
         }
         // Token contains CJK characters — split each CJK char individually;
-        // consecutive non-CJK chars (e.g. Latin letters, digits) stay grouped.
+        // consecutive non-CJK chars (e.g. Latin letters, digits) stay grouped,
+        // and CJK punctuation becomes its own unit to be attached afterwards.
         var buffer = ""
         for char in token {
-            if char.unicodeScalars.first.map({ $0.isCJK }) == true {
+            if char.unicodeScalars.first.map({ $0.isCJK }) == true || char.isCJKPunctuation {
                 if !buffer.isEmpty {
                     result.append(buffer)
                     buffer = ""
@@ -56,6 +86,32 @@ func splitTextIntoWords(_ text: String) -> [String] {
         }
         if !buffer.isEmpty {
             result.append(buffer)
+        }
+    }
+    return result
+}
+
+/// Merges punctuation-only words into their neighbour: opening marks into the
+/// next word, everything else into the previous one.
+private func attachPunctuation(_ words: [String]) -> [String] {
+    var result: [String] = []
+    var pendingOpening = ""
+    for word in words {
+        let isPunctuationOnly = word.allSatisfy(\.isPunctuation)
+        if isPunctuationOnly && word.allSatisfy(\.isOpeningPunctuation) {
+            pendingOpening += word
+        } else if isPunctuationOnly && pendingOpening.isEmpty && !result.isEmpty {
+            result[result.count - 1] += word
+        } else {
+            result.append(pendingOpening + word)
+            pendingOpening = ""
+        }
+    }
+    if !pendingOpening.isEmpty {
+        if result.isEmpty {
+            result.append(pendingOpening)
+        } else {
+            result[result.count - 1] += pendingOpening
         }
     }
     return result
@@ -780,6 +836,8 @@ struct WordFlowLayout: View {
             return Text(item.word + " ")
                 .font(item.isAnnotation ? Font(font).italic() : Font(font))
                 .foregroundStyle(uniformColor)
+                // Never let SwiftUI truncate script text to "…".
+                .fixedSize()
                 .background(
                     GeometryReader { wordGeo in
                         Color.clear.preference(
@@ -803,6 +861,8 @@ struct WordFlowLayout: View {
             return Text(item.word + " ")
                 .font(Font(font).italic())
                 .foregroundStyle(annotationColor)
+                // Never let SwiftUI truncate script text to "…".
+                .fixedSize()
                 .background(
                     GeometryReader { wordGeo in
                         Color.clear.preference(
@@ -829,6 +889,8 @@ struct WordFlowLayout: View {
             .font(Font(font))
             .foregroundStyle(wordColor)
             .underline(isCurrentWord, color: wordColor)
+            // Never let SwiftUI truncate script text to "…".
+            .fixedSize()
             .background(
                 GeometryReader { wordGeo in
                     Color.clear.preference(
@@ -867,7 +929,6 @@ struct WordFlowLayout: View {
     private func buildLines(items: [WordItem]) -> [[WordItem]] {
         var lines: [[WordItem]] = [[]]
         var currentLineWidth: CGFloat = 0
-        let spaceWidth = (" " as NSString).size(withAttributes: [.font: font]).width
 
         for item in items {
             if paragraphBreakBeforeWordIndices.contains(item.id),
@@ -875,7 +936,13 @@ struct WordFlowLayout: View {
                 lines.append([])
                 currentLineWidth = 0
             }
-            let wordWidth = (item.word as NSString).size(withAttributes: [.font: font]).width + spaceWidth
+            // Measure exactly what wordView renders (`word + " "` as one string):
+            // measuring the word and the space separately under-counts full-width
+            // punctuation by ~10pt. SwiftUI rounds each Text up to whole points,
+            // so round up too (floor + 1 also covers exact integers) — otherwise
+            // the line overflows and SwiftUI truncates a word to "…".
+            let measured = ((item.word + " ") as NSString).size(withAttributes: [.font: font]).width
+            let wordWidth = floor(measured) + 1
             if currentLineWidth + wordWidth > containerWidth && !lines[lines.count - 1].isEmpty {
                 lines.append([])
                 currentLineWidth = 0
