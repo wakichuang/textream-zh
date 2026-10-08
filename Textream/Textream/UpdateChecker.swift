@@ -10,8 +10,10 @@ import AppKit
 class UpdateChecker {
     static let shared = UpdateChecker()
 
-    private let repoOwner = "f"
-    private let repoName = "textream"
+    // 繁中改版：check this fork's releases, not the original's — updating to an
+    // original release would silently drop the Traditional Chinese fixes.
+    private let repoOwner = "wakichuang"
+    private let repoName = "textream-zh"
 
     private var currentVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"

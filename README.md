@@ -55,7 +55,7 @@ zh/install.sh
 
 - 如果已經用 Homebrew 裝過原版，先 `brew uninstall --cask textream`，免得 `brew upgrade` 把原版蓋回來。
 - 如果出現「找不到 Apple Development 憑證」，但 Xcode 裡明明有，通常是鑰匙圈缺少 Apple 的 WWDR G3 中繼憑證，可以到 [Apple PKI](https://www.apple.com/certificateauthority/) 下載 `AppleWWDRCAG3.cer` 加進鑰匙圈。
-- 已知限制：App 選單裡的「Check for Updates」查的是原版的版本，請不要從那裡更新，否則會換回原版。
+- App 選單裡的「Check for Updates」查的是繁中版的發佈版本，不會把你換回原版。
 
 ## 驗證
 
