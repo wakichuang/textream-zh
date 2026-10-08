@@ -4,7 +4,7 @@
 
 ## 遠端與分支
 
-- `origin` → `wakichuang/textream-zh`（private）；`upstream` → `f/textream`。
+- `origin` → `wakichuang/textream-zh`（**public**，f/textream 的正式 fork，2026-10-08 起）；`upstream` → `f/textream`。這是公開 repo：個人路徑、email、金鑰、錄音一律不進來。
 - 分支沿用原版的 `master`，方便合併上游：`git fetch upstream && git merge upstream/master`。
 - 改動盡量集中、少碰原版的其他地方，合併上游時衝突才小。改過的地方在下面「改動清單」記一行。
 
