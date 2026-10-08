@@ -10,6 +10,13 @@
 
 - `README.md` 是繁中版自己的說明；原版的英文 README 搬到 `docs/README.upstream.md`。合併上游時 README 衝突一律保留繁中版，原版改了什麼再手動更新 `docs/README.upstream.md`。
 
+## 版本號與發佈
+
+- 版本號用 4 段數字：`原版版本.繁中版第幾版`，例如基於原版 1.7.1 的第一版是 `1.7.1.1`，小修就 `1.7.1.2`，合併原版 1.7.2 之後變 `1.7.2.1`。不能加文字（`1.7.1-zh`），因為 `UpdateChecker` 只比數字，文字會被忽略。
+- 發佈步驟：改 `Textream/Textream.xcodeproj/project.pbxproj` 裡 macOS 三組設定（Debug、Release、AppStore）的 `MARKETING_VERSION` → 跑 `zh/verify-layout/run.sh`、`zh/verify-matcher/run.sh` → `zh/install.sh` → commit、推送 → `gh release create v<版本> --title "Textream 繁中版 <版本>（基於原版 x.y.z）" --notes-file <說明>`。README 安裝步驟裡的 `--branch v…` 一起改成新版。
+- 目前只發原始碼，不附 DMG：沒有 Apple Developer Program 的 Developer ID 簽名與公證，別人下載了也打不開。
+- 發佈是公開動作，要瓦基點頭才做。
+
 ## 改動清單
 
 | 檔案 | 改了什麼 | 為什麼 |

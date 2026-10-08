@@ -45,7 +45,13 @@
 
 1. 從 App Store 安裝 Xcode，打開一次並同意授權條款。
 2. 在 Xcode → Settings → Accounts 登入 Apple ID（免費帳號即可），在 Manage Certificates 建立一張 Apple Development 憑證。
-3. 下載這個 repo，在資料夾裡執行：
+3. 下載原始碼：到 [Releases](https://github.com/wakichuang/textream-zh/releases/latest) 下載最新版的原始碼壓縮檔並解壓縮，或用 git 指定版本 clone（直接 clone 拿到的是開發中的最新內容，不一定是發佈版）：
+
+```bash
+git clone --branch v1.7.1.1 https://github.com/wakichuang/textream-zh.git
+```
+
+4. 在下載的資料夾裡執行：
 
 ```bash
 zh/install.sh
@@ -55,7 +61,7 @@ zh/install.sh
 
 - 如果已經用 Homebrew 裝過原版，先 `brew uninstall --cask textream`，免得 `brew upgrade` 把原版蓋回來。
 - 如果出現「找不到 Apple Development 憑證」，但 Xcode 裡明明有，通常是鑰匙圈缺少 Apple 的 WWDR G3 中繼憑證，可以到 [Apple PKI](https://www.apple.com/certificateauthority/) 下載 `AppleWWDRCAG3.cer` 加進鑰匙圈。
-- App 選單裡的「Check for Updates」查的是繁中版的發佈版本，不會把你換回原版。
+- App 選單裡的「Check for Updates」查的是繁中版的發佈版本，不會把你換回原版。有新版時照第 3、4 步重裝一次即可。
 
 ## 驗證
 
