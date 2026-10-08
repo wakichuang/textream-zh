@@ -8,6 +8,8 @@
 - 分支沿用原版的 `master`，方便合併上游：`git fetch upstream && git merge upstream/master`。
 - 改動盡量集中、少碰原版的其他地方，合併上游時衝突才小。改過的地方在下面「改動清單」記一行。
 
+- `README.md` 是繁中版自己的說明；原版的英文 README 搬到 `docs/README.upstream.md`。合併上游時 README 衝突一律保留繁中版，原版改了什麼再手動更新 `docs/README.upstream.md`。
+
 ## 改動清單
 
 | 檔案 | 改了什麼 | 為什麼 |

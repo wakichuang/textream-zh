@@ -50,3 +50,10 @@ not be used in advertising or otherwise to promote the sale, use or other
 dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 ```
+
+## OpenDyslexic 字型（原版就內建，非繁中版新增）
+
+- 檔案：`Textream/Textream/Fonts/OpenDyslexic3-Regular.ttf`（iOS 版另有一份）
+- 作者：Abelardo Gonzalez（©2012）
+- 授權：SIL Open Font License 1.1，可隨軟體一起散布；授權名稱與版權聲明已寫在字型檔的 name 表裡（2026-10-08 讀字型檔確認）
+- 全文：https://openfontlicense.org/open-font-license-official-text/
