@@ -147,6 +147,8 @@ class SpeechRecognizer {
     /// ignores results for a short window so pre-jump speech isn't matched
     /// against the text at the new offset.
     private var lastJumpAt: Date = .distantPast
+    /// 繁中改版：the matcher for the current script (rebuilt whenever the text changes).
+    private var zhMatcher: ZhPromptMatcher?
 
     /// Update the source text while preserving the current recognized char count.
     /// Used by Director Mode to live-edit unread text without resetting read progress.
@@ -154,6 +156,7 @@ class SpeechRecognizer {
         let words = splitTextIntoWords(text)
         let collapsed = words.joined(separator: " ")
         sourceText = collapsed
+        zhMatcher = ZhPromptMatcher(words: words)
         normalizedSource = Self.normalize(collapsed)
         annotationRanges = SpeechTextAlignment.annotationRanges(in: collapsed)
         recognizedCharCount = min(preservingCharCount, collapsed.count)
@@ -196,6 +199,7 @@ class SpeechRecognizer {
         let words = splitTextIntoWords(text)
         let collapsed = words.joined(separator: " ")
         sourceText = collapsed
+        zhMatcher = ZhPromptMatcher(words: words)
         normalizedSource = Self.normalize(collapsed)
         annotationRanges = SpeechTextAlignment.annotationRanges(in: collapsed)
         recognizedCharCount = advancePastAnnotations(from: 0)
@@ -650,7 +654,17 @@ class SpeechRecognizer {
         if audioLevels.count > 30 {
             audioLevels.removeFirst()
         }
-        voiceActivityDetector.process(level: level, at: ProcessInfo.processInfo.systemUptime)
+        let now = ProcessInfo.processInfo.systemUptime
+        let wasSpeaking = voiceActivityDetector.isActive(at: now)
+        voiceActivityDetector.process(level: level, at: now)
+        // 繁中改版：speech resumed after a pause → the next words are a new
+        // sentence, matched from the current position (sherpa-onnx's endpoint
+        // in Textream for Windows). Keeps a long ad-lib from drifting the highlight.
+        if !wasSpeaking, voiceActivityDetector.isActive(at: now), let zhMatcher {
+            var state = zhMatchState
+            zhMatcher.sentenceBreak(fullTranscript: lastSpokenText, state: &state)
+            applyZhMatchState(state)
+        }
     }
 
     private func appendBufferToRequest(_ buffer: AVAudioPCMBuffer) {
@@ -808,6 +822,17 @@ class SpeechRecognizer {
         // less than the anchor length minus a small slack — a revision very
         // early in the transcript would otherwise leak the whole pre-jump
         // transcript back into matching.
+        // 繁中改版：ZhPromptMatcher (Textream for Windows' Chinese rules —
+        // reading-set matching, number normalization, anti-drag, anchor) does the
+        // trimming and matching. The original strategies below are kept untouched
+        // as the baseline for zh/verify-matcher and to ease upstream merges.
+        if let zhMatcher {
+            var state = zhMatchState
+            zhMatcher.follow(fullTranscript: fullSpoken, state: &state)
+            applyZhMatchState(state)
+            return
+        }
+
         var spoken = fullSpoken
         if !spokenAnchorPrefix.isEmpty {
             let common = zip(spokenAnchorPrefix, fullSpoken).prefix(while: { $0 == $1 }).count
@@ -863,6 +888,24 @@ class SpeechRecognizer {
         ) {
             recognizedCharCount = candidate
         }
+    }
+
+    private var zhMatchState: ZhPromptMatcher.State {
+        ZhPromptMatcher.State(
+            recognized: recognizedCharCount,
+            matchStart: matchStartOffset,
+            recentPositions: recentMatchPositions,
+            anchorPrefix: spokenAnchorPrefix
+        )
+    }
+
+    private func applyZhMatchState(_ state: ZhPromptMatcher.State) {
+        if recognizedCharCount != state.recognized {
+            recognizedCharCount = state.recognized
+        }
+        matchStartOffset = state.matchStart
+        recentMatchPositions = state.recentPositions
+        spokenAnchorPrefix = state.anchorPrefix
     }
 
     private func advancePastAnnotations(from offset: Int) -> Int {

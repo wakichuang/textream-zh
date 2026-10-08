@@ -17,6 +17,8 @@
 | 同檔 `wordView` | 每個字的 `Text` 加 `.fixedSize()` | 保險：萬一還是估錯，也不會吃字 |
 | 同檔 `displaySeparator`、`WordItem.displayText` | 中文字（漢字、假名）之間不顯示空白；全形標點後面放極細空白 U+200A；中英、數字、韓文之間保留空白。只改顯示，`charOffset` 照舊每字算一個空白 | 原版每個中文字後面都有空白，字距鬆。標點若落在一段 `Text` 的最尾巴，右半邊會被裁掉、看起來黏到下一個字，極細空白能讓它保持全寬 |
 | 同檔 `leadingPunctuationTrim`、`WordItem.trailingTrim` | 開頭是全形開括號的字（「自、《原），尾端用負的 padding 扣回 Core Text 縮掉的量 | Core Text 會把開括號左半邊縮掉，但回報的寬度沒扣，字後面多出約 1.8 pt 的空隙 |
+| `Textream/Textream/ZhMatching/`（新增） | 移植 Textream for Windows 的中文比對：`ZhPinyinTable`（Unihan 讀音表，所有讀音）、`ZhNumbers`（國字／阿拉伯數字統一）、`ZhPromptMatcher`（字元層＋詞層、讀音集合比對、防拖走、找回位置）。門檻與 Windows 版相同：對不上前後各找 5 個、找回位置往後 400 個可讀單位、基本連續 5 個、每遠 50 個多 1 個 | 原版前後只容錯 5 個單位、字要完全一樣，跳過一兩句或子標題就卡住；同音錯字、Apple 把「三」寫成「3」也對不上 |
+| `SpeechRecognizer.swift` `matchCharacters`、`recordAudioLevel` | 有 `zhMatcher` 就交給它比對；停頓後再開口（語音活動偵測由不活躍轉活躍）時呼叫 `sentenceBreak`。原版的 `charLevelMatch`／`wordLevelMatch` 原封不動留著 | Apple 的辨識一段最長約一分鐘、不會每句重來；不切句的話，長段插話的漂移會累積，被常用詞一次確認跳太遠（ZH-20）。留著原版函式給測試當對照組，也讓合併上游衝突小 |
 
 ## 安裝到這台 Mac
 
@@ -28,5 +30,9 @@
 ## 驗證
 
 - `zh/verify-layout/run.sh`：只需要 Command Line Tools（裝了 Xcode 但還沒同意授權時，前面加 `DEVELOPER_DIR=/Library/Developer/CommandLineTools`）。切字結果、四種字型在 200～800 pt 每種寬度下有沒有任何一行超出容器，並畫出 PNG。**合併上游之後一定要跑**，「超出容器的行」必須是 0、「被當成標註的字」必須是空的。
+- `zh/verify-matcher/run.sh`：中文比對回歸檢查，只要 Command Line Tools。同一組情境（Windows 的 ZH-01～ZH-23、原版移植測試、Mac 專屬 MAC-01～03、數字正規化 38 條）跑原版與新版兩個比對，印成表格；**新版必須全綠**。原版的比對是從 `SpeechRecognizer.swift` 原樣抽出來的（`make_legacy.py`），所以原版函式不要刪。
+- `zh/verify-matcher/mutations.py`：突變檢查，逐一拿掉找回位置、防拖走、讀音比對、數字正規化、停頓切句，每一項都要有測試變紅。**改比對規則之後兩支都要跑。**
+- 「Mac 串流」餵法模擬 Apple 一整段越來越長的辨識結果、句與句之間有停頓；「逐句」餵法模擬 Windows 每句重來。
 - 語音追蹤的比對（`SpeechRecognizer.swift`）會先濾掉標點，所以標點黏在字上不影響追蹤；改切字規則時要記得這一點。
-- iOS 版（`TextreamiOS/`）有自己的一套切字（`PromptTextProcessor.swift`），本改版沒動。
+- iOS 版（`TextreamiOS/`）有自己的一套切字與比對（`PromptTextProcessor.swift`、`PromptMatcher.swift`），本改版沒動。
+- 第三方資料的授權聲明在 `zh/THIRD_PARTY_NOTICES.md`（Unihan 讀音表，Unicode License v3）。
