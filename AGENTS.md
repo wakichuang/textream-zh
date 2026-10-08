@@ -13,11 +13,13 @@
 | 檔案 | 改了什麼 | 為什麼 |
 | :-- | :-- | :-- |
 | `Textream/Textream/MarqueeTextView.swift` `splitTextIntoWords` | 全形標點不再單獨成字：開頭類（「（《“）黏到下一個字，其餘黏到前一個字；一行一行處理，不跨行黏 | 單獨的標點會被當成「標註」顯示成斜體變淡，寬度也量錯（上游 issue #128） |
-| 同檔 `buildLines` | 寬度改成整串量 `word + " "`，再 `floor + 1` | 分開量會少算全形標點約 10 pt，整行超寬時 SwiftUI 把數字、英文縮成「…」 |
+| 同檔 `buildLines` | 寬度改成整串量實際顯示的 `displayText`，再 `ceil` | 分開量會少算全形標點約 10 pt，整行超寬時 SwiftUI 把數字、英文縮成「…」；實測 SwiftUI 寬度＝`ceil`（672 筆無例外） |
 | 同檔 `wordView` | 每個字的 `Text` 加 `.fixedSize()` | 保險：萬一還是估錯，也不會吃字 |
+| 同檔 `displaySeparator`、`WordItem.displayText` | 中文字（漢字、假名）之間不顯示空白；全形標點後面放極細空白 U+200A；中英、數字、韓文之間保留空白。只改顯示，`charOffset` 照舊每字算一個空白 | 原版每個中文字後面都有空白，字距鬆。標點若落在一段 `Text` 的最尾巴，右半邊會被裁掉、看起來黏到下一個字，極細空白能讓它保持全寬 |
+| 同檔 `leadingPunctuationTrim`、`WordItem.trailingTrim` | 開頭是全形開括號的字（「自、《原），尾端用負的 padding 扣回 Core Text 縮掉的量 | Core Text 會把開括號左半邊縮掉，但回報的寬度沒扣，字後面多出約 1.8 pt 的空隙 |
 
 ## 驗證
 
-- `zh/verify-layout/run.sh`：只需要 Command Line Tools。切字結果、四種字型在 200～800 pt 每種寬度下有沒有任何一行超出容器，並畫出 PNG。**合併上游之後一定要跑**，「超出容器的行」必須是 0、「被當成標註的字」必須是空的。
+- `zh/verify-layout/run.sh`：只需要 Command Line Tools（裝了 Xcode 但還沒同意授權時，前面加 `DEVELOPER_DIR=/Library/Developer/CommandLineTools`）。切字結果、四種字型在 200～800 pt 每種寬度下有沒有任何一行超出容器，並畫出 PNG。**合併上游之後一定要跑**，「超出容器的行」必須是 0、「被當成標註的字」必須是空的。
 - 語音追蹤的比對（`SpeechRecognizer.swift`）會先濾掉標點，所以標點黏在字上不影響追蹤；改切字規則時要記得這一點。
 - iOS 版（`TextreamiOS/`）有自己的一套切字（`PromptTextProcessor.swift`），本改版沒動。

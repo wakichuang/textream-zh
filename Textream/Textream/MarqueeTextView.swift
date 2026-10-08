@@ -39,6 +39,12 @@ extension Character {
             || (v >= 0x2010 && v <= 0x2027)    // Dashes, quotes, ellipsis
     }
 
+    /// Han ideographs and kana, which are written without spaces between them.
+    var isSpacelessCJK: Bool {
+        guard let scalar = unicodeScalars.first, scalar.isCJK else { return false }
+        return !(scalar.value >= 0xAC00 && scalar.value <= 0xD7AF)
+    }
+
     /// Opening brackets and quotes (`「` `（` `《` `“` `(`) belong to the word after them.
     var isOpeningPunctuation: Bool {
         guard let category = unicodeScalars.first?.properties.generalCategory else { return false }
@@ -117,6 +123,38 @@ private func attachPunctuation(_ words: [String]) -> [String] {
     return result
 }
 
+/// The visible separator after a word. Chinese and Japanese are written without
+/// spaces, and full-width punctuation already carries its own spacing, so no
+/// space is shown there; a space is kept around Latin words, digits and Hangul
+/// (Korean separates words with spaces). Display only — char offsets still
+/// count one space per word.
+func displaySeparator(after word: String, before next: String?) -> String {
+    // A Text that ends in full-width punctuation gets its trailing half trimmed,
+    // which makes `，` look detached from its own character and glued to the
+    // next one. A hair space keeps the punctuation at its full width.
+    if word.last?.isCJKPunctuation == true { return "\u{200A}" }
+    guard let last = word.last, let next, let first = next.first else { return " " }
+    if first.isCJKPunctuation { return "" }
+    if last.isSpacelessCJK && first.isSpacelessCJK { return "" }
+    return " "
+}
+
+/// Core Text squeezes the blank half of a leading full-width opening mark
+/// (`「自`, `《原`) by drawing the glyph at a negative x, but still reports the
+/// unsqueezed width, which leaves a visible gap after the word. Returns how
+/// much to trim from the trailing edge so the next character sits flush.
+func leadingPunctuationTrim(of word: String, font: NSFont) -> CGFloat {
+    guard word.first?.isCJKPunctuation == true else { return 0 }
+    let line = CTLineCreateWithAttributedString(
+        NSAttributedString(string: word, attributes: [.font: font])
+    )
+    guard let run = (CTLineGetGlyphRuns(line) as? [CTRun])?.first,
+          CTRunGetGlyphCount(run) > 0 else { return 0 }
+    var position = CGPoint.zero
+    CTRunGetPositions(run, CFRange(location: 0, length: 1), &position)
+    return max(0, -position.x)
+}
+
 /// Returns the word indices that begin a new paragraph. Consecutive and
 /// whitespace-only lines collapse into a single visual separator.
 func paragraphBreakWordIndices(in text: String) -> Set<Int> {
@@ -159,6 +197,8 @@ struct WordItem: Identifiable {
     let word: String
     let charOffset: Int // char offset of this word in the full text (counting spaces)
     let isAnnotation: Bool // true for [bracket] words and emoji-only words
+    let displayText: String // word plus the visible separator after it
+    var trailingTrim: CGFloat = 0 // see leadingPunctuationTrim(of:font:)
 }
 
 // MARK: - Preference key to report word Y positions
@@ -833,11 +873,12 @@ struct WordFlowLayout: View {
                 ? cueColor.opacity(cueUnreadOpacity)
                 : highlightColor
 
-            return Text(item.word + " ")
+            return Text(item.displayText)
                 .font(item.isAnnotation ? Font(font).italic() : Font(font))
                 .foregroundStyle(uniformColor)
                 // Never let SwiftUI truncate script text to "…".
                 .fixedSize()
+                .padding(.trailing, -item.trailingTrim)
                 .background(
                     GeometryReader { wordGeo in
                         Color.clear.preference(
@@ -858,11 +899,12 @@ struct WordFlowLayout: View {
                 ? cueColor.opacity(cueReadOpacity)
                 : cueColor.opacity(cueUnreadOpacity)
 
-            return Text(item.word + " ")
+            return Text(item.displayText)
                 .font(Font(font).italic())
                 .foregroundStyle(annotationColor)
                 // Never let SwiftUI truncate script text to "…".
                 .fixedSize()
+                .padding(.trailing, -item.trailingTrim)
                 .background(
                     GeometryReader { wordGeo in
                         Color.clear.preference(
@@ -885,12 +927,13 @@ struct WordFlowLayout: View {
         // Base color for the whole word
         let wordColor: Color = isFullyLit ? highlightColor.opacity(0.3) : dimColor
 
-        return Text(item.word + " ")
+        return Text(item.displayText)
             .font(Font(font))
             .foregroundStyle(wordColor)
             .underline(isCurrentWord, color: wordColor)
             // Never let SwiftUI truncate script text to "…".
             .fixedSize()
+            .padding(.trailing, -item.trailingTrim)
             .background(
                 GeometryReader { wordGeo in
                     Color.clear.preference(
@@ -911,7 +954,15 @@ struct WordFlowLayout: View {
         let annotationFlags = SpeechTextAlignment.annotationFlags(for: words)
         for (i, word) in words.enumerated() {
             let isAnnotation = annotationFlags[i] || Self.isAnnotationWord(word)
-            items.append(WordItem(id: i, word: word, charOffset: offset, isAnnotation: isAnnotation))
+            let next = i + 1 < words.count ? words[i + 1] : nil
+            items.append(WordItem(
+                id: i,
+                word: word,
+                charOffset: offset,
+                isAnnotation: isAnnotation,
+                displayText: word + displaySeparator(after: word, before: next),
+                trailingTrim: leadingPunctuationTrim(of: word, font: font)
+            ))
             offset += word.count + 1 // +1 for space
         }
         return items
@@ -936,13 +987,13 @@ struct WordFlowLayout: View {
                 lines.append([])
                 currentLineWidth = 0
             }
-            // Measure exactly what wordView renders (`word + " "` as one string):
+            // Measure exactly what wordView renders (`displayText` as one string):
             // measuring the word and the space separately under-counts full-width
             // punctuation by ~10pt. SwiftUI rounds each Text up to whole points,
-            // so round up too (floor + 1 also covers exact integers) — otherwise
-            // the line overflows and SwiftUI truncates a word to "…".
-            let measured = ((item.word + " ") as NSString).size(withAttributes: [.font: font]).width
-            let wordWidth = floor(measured) + 1
+            // so round up too — otherwise the line overflows and SwiftUI
+            // truncates a word to "…".
+            let measured = (item.displayText as NSString).size(withAttributes: [.font: font]).width
+            let wordWidth = ceil(ceil(measured) - item.trailingTrim)
             if currentLineWidth + wordWidth > containerWidth && !lines[lines.count - 1].isEmpty {
                 lines.append([])
                 currentLineWidth = 0

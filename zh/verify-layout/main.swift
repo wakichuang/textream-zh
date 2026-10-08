@@ -21,9 +21,12 @@ let fonts: [(String, NSFont)] = [
     ("sans32", NSFont.systemFont(ofSize: 32, weight: .semibold)),
 ]
 
-@MainActor func actualWidth(_ s: String, _ f: NSFont, cache: inout [String: CGFloat]) -> CGFloat {
+// 跟 wordView 一樣的畫法：Text(displayText).fixedSize().padding(.trailing, -trailingTrim)
+@MainActor func actualWidth(_ item: WordItem, _ f: NSFont, cache: inout [String: CGFloat]) -> CGFloat {
+    let s = item.displayText
     if let w = cache[s] { return w }
-    let w = NSHostingView(rootView: Text(s).font(Font(f)).fixedSize()).fittingSize.width
+    let w = NSHostingView(rootView: Text(s).font(Font(f)).fixedSize()
+        .padding(.trailing, -item.trailingTrim)).fittingSize.width
     cache[s] = w
     return w
 }
@@ -48,7 +51,7 @@ MainActor.assumeIsolated {
                                             containerWidth: CGFloat(width))
                 for line in layout.buildLines(items: layout.buildItems()) {
                     totalLines += 1
-                    let real = line.reduce(0) { $0 + actualWidth($1.word + " ", f, cache: &cache) }
+                    let real = line.reduce(0) { $0 + actualWidth($1, f, cache: &cache) }
                     if real > CGFloat(width) + 0.01, line.count > 1 {
                         overflowLines += 1
                         overflowWidths.insert(width)
