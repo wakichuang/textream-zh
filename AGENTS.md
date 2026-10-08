@@ -18,6 +18,13 @@
 | 同檔 `displaySeparator`、`WordItem.displayText` | 中文字（漢字、假名）之間不顯示空白；全形標點後面放極細空白 U+200A；中英、數字、韓文之間保留空白。只改顯示，`charOffset` 照舊每字算一個空白 | 原版每個中文字後面都有空白，字距鬆。標點若落在一段 `Text` 的最尾巴，右半邊會被裁掉、看起來黏到下一個字，極細空白能讓它保持全寬 |
 | 同檔 `leadingPunctuationTrim`、`WordItem.trailingTrim` | 開頭是全形開括號的字（「自、《原），尾端用負的 padding 扣回 Core Text 縮掉的量 | Core Text 會把開括號左半邊縮掉，但回報的寬度沒扣，字後面多出約 1.8 pt 的空隙 |
 
+## 安裝到這台 Mac
+
+- `zh/install.sh`：Xcode 編譯 Release（Apple Silicon）、用 Apple Development 憑證簽名、舊版移到垃圾桶、裝到 `/Applications/Textream.app` 並開啟。改完程式碼就跑它。
+- 不用 Xcode 自動簽名：識別碼 `dev.fka.textream` 登記在原作者的團隊，自動簽名會失敗；沙盒、麥克風、網路這幾項權限在 macOS 不需要描述檔，直接 `codesign` 就好。
+- 簽名要固定用同一張憑證，麥克風與語音辨識權限才不會每次重編就失效。憑證有效到 2027-10-08，到期在 Xcode → Settings → Accounts 重建。
+- Homebrew 版已卸載，不要再 `brew install --cask textream`，不然會蓋回原版。
+
 ## 驗證
 
 - `zh/verify-layout/run.sh`：只需要 Command Line Tools（裝了 Xcode 但還沒同意授權時，前面加 `DEVELOPER_DIR=/Library/Developer/CommandLineTools`）。切字結果、四種字型在 200～800 pt 每種寬度下有沒有任何一行超出容器，並畫出 PNG。**合併上游之後一定要跑**，「超出容器的行」必須是 0、「被當成標註的字」必須是空的。
