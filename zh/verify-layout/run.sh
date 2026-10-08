@@ -5,6 +5,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$HERE/../../Textream/Textream"
 OUT="${1:-$(mktemp -d)}"
+mkdir -p "$OUT"
 WORK="$(mktemp -d)"
 python3 "$HERE/extract.py" "$SRC/MarqueeTextView.swift" "$WORK/layout.swift"
 swiftc -O "$HERE/main.swift" "$WORK/layout.swift" "$SRC/SpeechTextAlignment.swift" "$SRC/TextDirection.swift" -o "$WORK/run"
