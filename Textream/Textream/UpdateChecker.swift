@@ -34,7 +34,7 @@ class UpdateChecker {
             DispatchQueue.main.async {
                 if let error {
                     if !silent {
-                        self.showError("Could not check for updates.\n\(error.localizedDescription)")
+                        self.showError("無法檢查更新，請確認網路連線。\n\(error.localizedDescription)")
                     }
                     return
                 }
@@ -44,7 +44,7 @@ class UpdateChecker {
                       let tagName = json["tag_name"] as? String,
                       let htmlURL = json["html_url"] as? String else {
                     if !silent {
-                        self.showError("Could not parse the release information.")
+                        self.showError("讀不到發佈資訊，請稍後再試。")
                     }
                     return
                 }
@@ -79,11 +79,11 @@ class UpdateChecker {
 
     private func showUpdateAvailable(latestVersion: String, releaseURL: String) {
         let alert = NSAlert()
-        alert.messageText = "Update Available"
-        alert.informativeText = "Textream \(latestVersion) is available. You are currently running \(currentVersion)."
+        alert.messageText = "有新版：Textream 繁中版 \(latestVersion)"
+        alert.informativeText = "你目前是 \(currentVersion)。到發佈頁面下載新版的原始碼，在資料夾裡執行 zh/install.sh 就能更新。"
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "Download")
-        alert.addButton(withTitle: "Later")
+        alert.addButton(withTitle: "查看更新說明")
+        alert.addButton(withTitle: "稍後")
 
         if alert.runModal() == .alertFirstButtonReturn {
             if let url = URL(string: releaseURL) {
@@ -94,19 +94,19 @@ class UpdateChecker {
 
     private func showUpToDate() {
         let alert = NSAlert()
-        alert.messageText = "You're Up to Date"
-        alert.informativeText = "Textream \(currentVersion) is the latest version."
+        alert.messageText = "已是最新版"
+        alert.informativeText = "Textream 繁中版 \(currentVersion) 是目前最新的版本。"
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "好")
         alert.runModal()
     }
 
     private func showError(_ message: String) {
         let alert = NSAlert()
-        alert.messageText = "Update Check Failed"
+        alert.messageText = "檢查更新失敗"
         alert.informativeText = message
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "好")
         alert.runModal()
     }
 }

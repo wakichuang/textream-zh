@@ -169,7 +169,7 @@ struct TextreamApp: App {
                 }
                 #if !APP_STORE
                 Divider()
-                Button("Check for Updates…") {
+                Button("檢查更新…") {
                     UpdateChecker.shared.checkForUpdates()
                 }
                 #endif
