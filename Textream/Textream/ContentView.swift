@@ -756,6 +756,15 @@ Happy presenting! [wave]
         isTextFocused = false
         service.onOverlayDismissed = { [self] in
             isRunning = false
+            // 繁中改版：編輯器游標放回停下的地方，下次按播放就接著講
+            if NotchSettings.shared.listeningMode == .wordTracking {
+                let page = service.currentPageText
+                dictationCaretPosition = EditorPlaybackPosition.editorCaret(
+                    editorText: page,
+                    scriptOffset: service.overlayController.speechRecognizer.recognizedCharCount,
+                    words: splitTextIntoWords(page.trimmingCharacters(in: .whitespacesAndNewlines))
+                )
+            }
             service.readPages.removeAll()
             NSApp.activate(ignoringOtherApps: true)
             NSApp.windows.first?.makeKeyAndOrderFront(nil)
@@ -763,12 +772,20 @@ Happy presenting! [wave]
         service.readPages.removeAll()
         // If the current page is empty, find the first non-empty page
         let currentText = service.currentPageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 繁中改版：從編輯器游標所在的字開始播放（語音追蹤模式）
+        var startCharOffset = 0
         if currentText.isEmpty {
             if let firstNonEmpty = service.pages.firstIndex(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
                 service.currentPageIndex = firstNonEmpty
             }
+        } else if NotchSettings.shared.listeningMode == .wordTracking {
+            startCharOffset = EditorPlaybackPosition.scriptOffset(
+                editorText: service.currentPageText,
+                caretUTF16: editorCaretPosition,
+                words: splitTextIntoWords(currentText)
+            )
         }
-        service.readCurrentPage()
+        service.readCurrentPage(startCharOffset: startCharOffset)
         isRunning = true
     }
 

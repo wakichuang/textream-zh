@@ -46,7 +46,14 @@ final class ZhPromptMatcher {
         /// Transcript already accounted for (after a tap jump or an anchor jump);
         /// only what follows it is matched.
         var anchorPrefix = ""
+        /// 繁中改版（issue #1）：往回跳之後先不「找回位置」，等講者在新位置真的念了
+        /// `holdReleaseUnits` 個字才恢復。不然跳轉當下還沒講完的那句、或停一下又接著講的
+        /// 原本後面的話，會在後面找到對得上的地方，把高亮拉回原處。停頓不算數。
+        var holdAnchor = false
     }
+
+    /// 往回跳之後，在新位置往後念到這麼多個可讀單位（中文字、英文詞），才恢復找回位置。
+    static let holdReleaseUnits = 3
 
     let text: String
     let characterCount: Int
@@ -95,6 +102,16 @@ final class ZhPromptMatcher {
             state.matchStart = state.recognized
             state.anchorPrefix = fullTranscript
         }
+    }
+
+    /// 繁中改版（issue #1）：點字或滾輪跳轉。往回跳之後先不找回位置，讓講者可以停在前面重講，
+    /// 在新位置念了幾個字才恢復；往後跳照舊。
+    func jump(to offset: Int, lastTranscript: String, state: inout State) {
+        state.holdAnchor = state.holdAnchor || offset < state.recognized
+        state.recognized = offset
+        state.matchStart = offset
+        state.recentPositions = []
+        state.anchorPrefix = lastTranscript
     }
 
     /// The speaker paused and started talking again: the next words begin a new
@@ -158,10 +175,14 @@ final class ZhPromptMatcher {
                 confirmed: confirmed
             ) {
                 state.recognized = candidate
+                if state.holdAnchor, readableUnits(from: state.matchStart, to: candidate) >= Self.holdReleaseUnits {
+                    state.holdAnchor = false
+                }
             }
         }
 
-        if let anchor = findAnchor(firstUnit: firstUnit, spoken: spokenUnits, recognized: state.recognized),
+        if !state.holdAnchor,
+           let anchor = findAnchor(firstUnit: firstUnit, spoken: spokenUnits, recognized: state.recognized),
            anchor > state.recognized {
             state.recognized = anchor
             state.recentPositions = []
@@ -313,6 +334,11 @@ final class ZhPromptMatcher {
     }
 
     // MARK: - Helpers
+
+    /// [from, to) 之間有幾個可讀單位（不算標註）。
+    private func readableUnits(from: Int, to: Int) -> Int {
+        units.reduce(0) { $0 + ($1.start >= from && $1.start < to && !$1.isAnnotation ? 1 : 0) }
+    }
 
     /// Scan end → characters advanced from the match start: the start of the
     /// next slot, or the end of the script when everything was read.

@@ -20,6 +20,8 @@ protocol Follower: AnyObject {
     func hearStream(_ fullTranscript: String)
     /// Mac 串流模式：講者停頓後再開口（語音活動偵測）。
     func pause(_ fullTranscript: String)
+    /// 點字或滾輪跳轉（SpeechRecognizer.jumpTo）；lastTranscript 是跳轉當下的辨識結果。
+    func jump(to offset: Int, lastTranscript: String)
 }
 
 final class NewFollower: Follower {
@@ -36,6 +38,9 @@ final class NewFollower: Follower {
     func restart() { state.matchStart = state.recognized; state.recentPositions = [] }
     func hearStream(_ fullTranscript: String) { matcher.follow(fullTranscript: fullTranscript, state: &state) }
     func pause(_ fullTranscript: String) { matcher.sentenceBreak(fullTranscript: fullTranscript, state: &state) }
+    func jump(to offset: Int, lastTranscript: String) {
+        matcher.jump(to: matcher.advancePastAnnotations(from: offset), lastTranscript: lastTranscript, state: &state)
+    }
 }
 
 final class OldFollower: Follower {
@@ -45,8 +50,23 @@ final class OldFollower: Follower {
     var position: Int { matcher.recognizedCharCount }
     func hear(_ transcript: String) { matcher.match(transcript) }
     func restart() { matcher.matchStartOffset = matcher.recognizedCharCount; matcher.recentMatchPositions = [] }
-    func hearStream(_ fullTranscript: String) { matcher.match(fullTranscript) }
+    func hearStream(_ fullTranscript: String) {
+        // 原版 matchCharacters：跳轉之後依共同前綴裁掉跳轉前的話，最多留 24 字寬限
+        var spoken = fullTranscript
+        if !anchor.isEmpty {
+            let common = zip(anchor, fullTranscript).prefix(while: { $0 == $1 }).count
+            spoken = String(fullTranscript.dropFirst(min(fullTranscript.count, max(common, anchor.count - 24))))
+        }
+        matcher.match(spoken)
+    }
     func pause(_ fullTranscript: String) {} // 原版沒有停頓切句
+    var anchor = ""
+    func jump(to offset: Int, lastTranscript: String) {
+        matcher.recognizedCharCount = matcher.advancePastAnnotations(from: offset)
+        matcher.matchStartOffset = matcher.recognizedCharCount
+        matcher.recentMatchPositions = []
+        anchor = lastTranscript
+    }
 }
 
 enum Mode: String { case perUtterance = "逐句", stream = "Mac 串流" }
@@ -282,6 +302,103 @@ test("MAC-02", "繁體同音錯字（已經→以經、瓦基→哇基）", "我
 test("MAC-03", "一分鐘長的辨識結果：中途跳一段後繼續跟", String(repeating: "這是前面的鋪陳，我們慢慢念過去。", count: 3) + "接下來這一段我想跳過，因為今天時間不夠。最後一段是結論，閱讀是一輩子的事情，請你每天都讀一點。", modes: [.stream]) { f, mode in
     let p = try feed(f, mode, [String(repeating: "这是前面的铺陈我们慢慢念过去", count: 3), "最后一段是结论阅读是一辈子的事情请你每天都读一点"])
     try reachesEnd(f, p.last!, "MAC-03")
+}
+
+// ── issue #1：講到一半往回滾或往回點，要能停在前面重講 ──
+
+let rereadSentences = ["卡片盒筆記的核心是用自己的話重寫。", "每一張卡片只寫一個觀點，而且要能獨立看懂。", "寫完之後要跟舊的卡片建立連結。",
+                       "索引筆記就像一張地圖，帶你找到入口。", "真正的思考一定要由自己完成。", "工具不重要，重要的是持續寫下去。"]
+let rereadScript = rereadSentences.joined()
+let rereadSpoken = rereadSentences.map { $0.filter { $0.isLetter || $0.isNumber } }
+
+/// 第 index 句開頭的位置：前面幾句的可讀字數過完之後的第一個可讀字（講稿的字之間有空白）。
+func sentenceStart(_ index: Int, in text: String) -> Int {
+    let target = rereadSpoken[..<index].reduce(0) { $0 + $1.count }
+    var seen = 0
+    for (offset, character) in text.enumerated() where character.isLetter || character.isNumber {
+        if seen == target { return offset }
+        seen += 1
+    }
+    return text.count
+}
+/// 句子結尾（下一句開頭）的位置；最後一句就是講稿結尾。
+func sentenceEnd(_ index: Int, in text: String) -> Int {
+    index + 1 < rereadSentences.count ? sentenceStart(index + 1, in: text) : text.count
+}
+/// 串流餵一句（每次多 2 個字），不檢查倒退：跳轉本來就會往回。
+func stream(_ f: Follower, _ heard: String, _ sentence: String) {
+    let characters = Array(sentence)
+    var k = 2
+    while k < characters.count { f.hearStream(heard + String(characters[..<k])); k += 2 }
+    f.hearStream(heard + sentence)
+}
+func describe(_ f: Follower, _ position: Int) -> String {
+    "停在可讀字 \(readable(f.text, position))「\(String(f.text.dropFirst(position).prefix(8)))」"
+}
+
+test("MAC-04", "往回跳之後，Apple 改寫了跳轉前最後幾個字（還沒開口）", rereadScript, modes: [.stream]) { f, mode in
+    _ = try feed(f, mode, Array(rereadSpoken[0..<4]))
+    let heard = rereadSpoken[0..<4].joined()
+    let back = sentenceStart(1, in: f.text)
+    f.jump(to: back, lastTranscript: heard)
+    var revised = Array(heard)
+    revised[revised.count - 7] = "代" // 「帶你找到入口」的「帶」改成同音的「代」
+    f.hearStream(String(revised))
+    try check(f.position == back, "MAC-04：被拉走了，\(describe(f, f.position))")
+    // 停一下再開口：改寫過的尾巴跟著第一個字一起送來，也不能把高亮拉走
+    f.pause(heard)
+    stream(f, String(revised), rereadSpoken[1])
+    try check(f.position == sentenceEnd(1, in: f.text), "MAC-04：開口後被拉走或沒跟上，\(describe(f, f.position))")
+}
+
+test("MAC-05", "講到一半往回跳，把那句講完、停一下再重念前面", rereadScript, modes: [.stream]) { f, mode in
+    _ = try feed(f, mode, Array(rereadSpoken[0..<4]))
+    var heard = rereadSpoken[0..<4].joined()
+    let unfinished = Array(rereadSpoken[4])
+    f.hearStream(heard + String(unfinished[..<4]))
+    let back = sentenceStart(1, in: f.text)
+    f.jump(to: back, lastTranscript: heard + String(unfinished[..<4]))
+    stream(f, heard, String(unfinished)) // 一邊滾一邊把那句講完
+    try check(f.position == back, "MAC-05：講完那句就被拉走，\(describe(f, f.position))")
+    heard += String(unfinished)
+    f.pause(heard)
+    stream(f, heard, rereadSpoken[1])
+    try check(f.position == sentenceEnd(1, in: f.text), "MAC-05：重念第 2 句沒跟上，\(describe(f, f.position))")
+}
+
+test("MAC-06", "往回跳之後停一下，又接著講原本後面的話：留在前面", rereadScript, modes: [.stream]) { f, mode in
+    _ = try feed(f, mode, Array(rereadSpoken[0..<4]))
+    let heard = rereadSpoken[0..<4].joined()
+    let back = sentenceStart(1, in: f.text)
+    f.jump(to: back, lastTranscript: heard)
+    f.pause(heard)
+    stream(f, heard, rereadSpoken[4])
+    try check(f.position == back, "MAC-06：被拉回原本講的地方，\(describe(f, f.position))")
+}
+
+test("MAC-08", "往回跳、重念前面那句之後，直接跳念後面的段落：找回位置仍然有效", rereadScript, modes: [.stream]) { f, mode in
+    _ = try feed(f, mode, Array(rereadSpoken[0..<4]))
+    var heard = rereadSpoken[0..<4].joined()
+    f.jump(to: sentenceStart(1, in: f.text), lastTranscript: heard)
+    f.pause(heard)
+    stream(f, heard, rereadSpoken[1])
+    heard += rereadSpoken[1]
+    try check(f.position == sentenceEnd(1, in: f.text), "MAC-08：重念那句沒跟上，\(describe(f, f.position))")
+    f.pause(heard)
+    stream(f, heard, rereadSpoken[4])
+    try check(f.position == sentenceEnd(4, in: f.text), "MAC-08：沒有找回位置，\(describe(f, f.position))")
+}
+
+test("MAC-07", "往後跳，跳轉前的尾巴被改寫（對照組）", rereadScript, modes: [.stream]) { f, mode in
+    _ = try feed(f, mode, Array(rereadSpoken[0..<4]))
+    let heard = rereadSpoken[0..<4].joined()
+    let ahead = sentenceStart(5, in: f.text)
+    f.jump(to: ahead, lastTranscript: heard)
+    var revised = Array(heard)
+    revised[revised.count - 7] = "代"
+    f.hearStream(String(revised))
+    stream(f, heard, rereadSpoken[5])
+    try check(f.position == f.text.count, "MAC-07：往後跳之後沒跟上，\(describe(f, f.position))")
 }
 
 // MARK: - 數字正規化（Windows ChineseNumbersTests）

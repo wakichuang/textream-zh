@@ -13,7 +13,7 @@
 ## 版本號與發佈
 
 - 版本號用 4 段數字：`原版版本.繁中版第幾版`，例如基於原版 1.7.1 的第一版是 `1.7.1.1`，小修就 `1.7.1.2`，合併原版 1.7.2 之後變 `1.7.2.1`。不能加文字（`1.7.1-zh`），因為 `UpdateChecker` 只比數字，文字會被忽略。
-- 發佈步驟：改 `Textream/Textream.xcodeproj/project.pbxproj` 裡 macOS 三組設定（Debug、Release、AppStore）的 `MARKETING_VERSION` → 跑 `zh/verify-layout/run.sh`、`zh/verify-matcher/run.sh`、`zh/verify-scroll/run.sh` → `zh/install.sh` → commit、推送 → `gh release create v<版本> --title "Textream 繁中版 <版本>（基於原版 x.y.z）" --notes-file <說明>`。README 安裝步驟裡的 `--branch v…` 一起改成新版。
+- 發佈步驟：改 `Textream/Textream.xcodeproj/project.pbxproj` 裡 macOS 三組設定（Debug、Release、AppStore）的 `MARKETING_VERSION` → 跑 `zh/verify-layout/run.sh`、`zh/verify-matcher/run.sh`、`zh/verify-scroll/run.sh`、`zh/verify-position/run.sh` → `zh/install.sh` → commit、推送 → `gh release create v<版本> --title "Textream 繁中版 <版本>（基於原版 x.y.z）" --notes-file <說明>`。README 安裝步驟裡的 `--branch v…` 一起改成新版。
 - 目前只發原始碼，不附 DMG：沒有 Apple Developer Program 的 Developer ID 簽名與公證，別人下載了也打不開。
 - 發佈是公開動作，要瓦基點頭才做。
 
@@ -29,7 +29,10 @@
 | `Textream/Textream/ZhMatching/`（新增） | 移植 Textream for Windows 的中文比對：`ZhPinyinTable`（Unihan 讀音表，所有讀音）、`ZhNumbers`（國字／阿拉伯數字統一）、`ZhPromptMatcher`（字元層＋詞層、讀音集合比對、防拖走、找回位置）。門檻與 Windows 版相同：對不上前後各找 5 個、找回位置往後 400 個可讀單位、基本連續 5 個、每遠 50 個多 1 個 | 原版前後只容錯 5 個單位、字要完全一樣，跳過一兩句或子標題就卡住；同音錯字、Apple 把「三」寫成「3」也對不上 |
 | `UpdateChecker.swift`、`TextreamApp.swift` | 檢查更新改查 `wakichuang/textream-zh` 的 Releases；選單「檢查更新…」與所有對話框改成中文，有新版時提示下載原始碼後跑 `zh/install.sh`（1.7.1.2） | 原本查 `f/textream`，照提示更新會裝回原版、修正全部消失；英文介面加上 Release 只有原始碼，使用者不知道怎麼更新 |
 | `.github/ISSUE_TEMPLATE/`（新增） | 中文的「問題回報」「改善建議」兩張 issue 表單，README 加「回報問題與建議」一節與範例；GitHub 上的 Issues 於 2026-10-09 打開 | fork 預設關閉 Issues，朋友想回報問題、提建議沒有地方提；表單要求貼講稿文字與版本號，拿到就能直接跑測試重現 |
+| `ZhPromptMatcher` 的 `jump`、`State.holdAnchor`；`SpeechRecognizer.jumpTo`、`matchCharacters` 的 `zhJumpSettle` | 點字或滾輪跳轉的當下、到最後一次跳轉後 1 秒，講的話一律丟掉（重新定錨），讓使用者先滾到位置；往回跳之後先不「找回位置」，等在新位置往後念到 3 個字才恢復，停頓不算數（1.7.1.4，issue #1） | 邊講邊往上滾時，還沒講完的那句、或停一下又接著講的原本後面的話，會被「找回位置」拉回原處，往上滾很不順；往下跳不受影響 |
 | `Textream/Textream/WheelLineJump.swift`（新增）、`MarqueeTextView.swift` `SpeechScrollView` 的 `onWheel`／`wheelJump`、`ScrollWheelView` | 語音追蹤模式滾輪一格跳一行（觸控板累積滿一行高算一格），聆聽中、暫停中都可以，走點字跳轉同一條路（`jumpTo`）；連續滾動從上一格的落點接著數；不跳過最後一行。一般滑鼠滾輪沒有 phase，停 0.25 秒就當作滾完（1.7.1.3） | 原版語音追蹤只准暫停時滾、而且只是偷看，按繼續就彈回原處；計時模式用滑鼠滾輪滾完會一直停著。照 Windows 版第 5.4 步補上：講到一半可以往前回看、往後跳，接著講就從新位置比對 |
+| `MarqueeTextView.swift` `WordFlowLayout` 的 `.frame(height: rowHeight)`、`computedWordYPositions`（取代每個字的 `GeometryReader`）；`SpeechScrollView` 的 `didInitialSeek` | 每一行固定成估計的行高，每個字的垂直位置直接用行號算出來回報，不再等畫面排完版量（1.7.1.4，issue #1） | 上方被省略的行用估計值撐開，實際行高不同（24pt 每行差 1 pt，整篇差 168 pt），同一個字量到的位置會隨捲動浮動；往上跳一行之後追蹤用浮動的位置重算、往下修正一律放行，跳轉被吃掉，往上滾卡卡的。這是看診斷紀錄找到的，前兩輪只改語音那邊沒用 |
+| `EditorPlaybackPosition.swift`（新增）；`ContentView.run`、`onOverlayDismissed`；`TextreamService.readText`／`readCurrentPage`、`NotchOverlayController.show` 的 `startCharOffset` | 語音追蹤模式按播放時從編輯器游標所在的字開始；停止時把游標放回停下的地方，再按播放就接著講。游標在最後面時從頭開始。用「前面有幾個非空白字元」換算（1.7.1.4） | 長講稿每次停下再播放都要從頭找；計時模式維持原版從頭開始 |
 | `SpeechRecognizer.swift` `matchCharacters`、`recordAudioLevel` | 有 `zhMatcher` 就交給它比對；停頓後再開口（語音活動偵測由不活躍轉活躍）時呼叫 `sentenceBreak`。原版的 `charLevelMatch`／`wordLevelMatch` 原封不動留著 | Apple 的辨識一段最長約一分鐘、不會每句重來；不切句的話，長段插話的漂移會累積，被常用詞一次確認跳太遠（ZH-20）。留著原版函式給測試當對照組，也讓合併上游衝突小 |
 
 ## 安裝到這台 Mac
@@ -41,10 +44,11 @@
 
 ## 驗證
 
-- `zh/verify-layout/run.sh`：只需要 Command Line Tools（裝了 Xcode 但還沒同意授權時，前面加 `DEVELOPER_DIR=/Library/Developer/CommandLineTools`）。切字結果、四種字型在 200～800 pt 每種寬度下有沒有任何一行超出容器，並畫出 PNG。**合併上游之後一定要跑**，「超出容器的行」必須是 0、「被當成標註的字」必須是空的。
-- `zh/verify-matcher/run.sh`：中文比對回歸檢查，只要 Command Line Tools。同一組情境（Windows 的 ZH-01～ZH-23、原版移植測試、Mac 專屬 MAC-01～03、數字正規化 38 條）跑原版與新版兩個比對，印成表格；**新版必須全綠**。原版的比對是從 `SpeechRecognizer.swift` 原樣抽出來的（`make_legacy.py`），所以原版函式不要刪。
-- `zh/verify-matcher/mutations.py`：突變檢查，逐一拿掉找回位置、防拖走、讀音比對、數字正規化、停頓切句，每一項都要有測試變紅。**改比對規則之後兩支都要跑。**
+- `zh/verify-layout/run.sh`：只需要 Command Line Tools（裝了 Xcode 但還沒同意授權時，前面加 `DEVELOPER_DIR=/Library/Developer/CommandLineTools`）。切字結果、四種字型在 200～800 pt 每種寬度下有沒有任何一行超出容器，並畫出 PNG。**合併上游之後一定要跑**，「超出容器的行」必須是 0、「被當成標註的字」必須是空的、「捲動位置檢查」必須全部通過（畫出來的高度＝算出來的、往上捲位置不變、還沒排版的起點位置正確；有任何一條沒過，結束碼為 1）。
+- `zh/verify-matcher/run.sh`：中文比對回歸檢查，只要 Command Line Tools。同一組情境（Windows 的 ZH-01～ZH-23、原版移植測試、Mac 專屬 MAC-01～08、數字正規化 38 條）跑原版與新版兩個比對，印成表格；**新版必須全綠**。原版的比對是從 `SpeechRecognizer.swift` 原樣抽出來的（`make_legacy.py`），所以原版函式不要刪。
+- `zh/verify-matcher/mutations.py`：突變檢查，逐一拿掉找回位置、防拖走、讀音比對、數字正規化、停頓切句、往回跳暫停找回位置、停頓就解除、重念不解除，每一項都要有測試變紅（跳轉後就定位的 1 秒是時間判斷，測不到，只能真機試）。**改比對規則之後兩支都要跑。**
 - `zh/verify-scroll/run.sh`：滾輪逐行跳轉的回歸檢查（跳到哪一行、滾動量換成行數、字元位置），只要 Command Line Tools；`zh/verify-scroll/mutations.py` 逐一弄壞每條規則，每一項都要變紅。**改滾輪規則之後兩支都要跑。**
+- `zh/verify-position/run.sh`：編輯器游標與播放位置互換（中英數、標點、表情符號、前面有空行、每個字來回換算），`mutations.py` 突變檢查。
 - 「Mac 串流」餵法模擬 Apple 一整段越來越長的辨識結果、句與句之間有停頓；「逐句」餵法模擬 Windows 每句重來。
 - 語音追蹤的比對（`SpeechRecognizer.swift`）會先濾掉標點，所以標點黏在字上不影響追蹤；改切字規則時要記得這一點。
 - iOS 版（`TextreamiOS/`）有自己的一套切字與比對（`PromptTextProcessor.swift`、`PromptMatcher.swift`），本改版沒動。

@@ -80,4 +80,57 @@ MainActor.assumeIsolated {
             try! png.write(to: URL(fileURLWithPath: "\(outDir)/\(label)-\(file).png"))
         }
     }
+
+    // ── 捲動位置（issue #1）：每個字的位置只跟它在第幾行有關，而且跟畫出來的一致 ──
+    var scrollFailures = 0
+    func scrollCheck(_ name: String, _ ok: Bool, _ detail: String) {
+        if !ok { scrollFailures += 1 }
+        print("[\(label)] \(ok ? "✅" : "❌") \(name)：\(detail)")
+    }
+    final class Box { var positions: [Int: CGFloat] = [:] }
+    let scrollText = (0..<12).map { _ in longSample }.joined(separator: "\n\n")
+    let scrollWords = splitTextIntoWords(scrollText)
+    let scrollBreaks = paragraphBreakWordIndices(in: scrollText)
+    func render(_ f: NSFont, offset: CGFloat, viewport: CGFloat, highlighted: Int = 0) -> (positions: [Int: CGFloat], height: CGFloat) {
+        let box = Box()
+        let view = WordFlowLayout(words: scrollWords, highlightedCharCount: highlighted, font: f,
+                                  paragraphBreakBeforeWordIndices: scrollBreaks, containerWidth: 476,
+                                  scrollOffset: offset, viewportHeight: viewport)
+            .frame(width: 476)
+            .onPreferenceChange(WordYPreferenceKey.self) { box.positions = $0 }
+        let host = NSHostingView(rootView: view)
+        host.frame = NSRect(x: 0, y: 0, width: 476, height: 100_000)
+        host.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        return (box.positions, host.fittingSize.height)
+    }
+    // 加上 24pt（瓦基用的「特大」）：這個字級實際行高跟估計值差 1 pt，拿掉固定行高時抓得到
+    for (name, f) in fonts + [("sans24", NSFont.systemFont(ofSize: 24, weight: .semibold))] {
+        let rowHeight = ceil(f.ascender - f.descender + f.leading)
+        // 不省略任何一行：實際排出來的總高度，要等於算出來的最後一行底部
+        let full = render(f, offset: 0, viewport: 0)
+        let modelBottom = (full.positions.values.max() ?? 0) + rowHeight / 2
+        scrollCheck("\(name) 畫出來的高度＝算出來的", abs(full.height - modelBottom) < 0.5,
+                    "實際 \(full.height)，算出來 \(modelBottom)（\(scrollWords.count) 個字）")
+        // 不同捲動位置（上方省略的行數不同），同一個字的位置要一樣
+        var worst: CGFloat = 0
+        var compared = 0
+        for base in stride(from: -600.0, through: -6000.0, by: -900.0) {
+            let a = render(f, offset: base, viewport: 331).positions
+            for up in [rowHeight + 8, (rowHeight + 8) * 3, 400] {
+                let b = render(f, offset: base + up, viewport: 331).positions
+                for k in Set(a.keys).intersection(b.keys) { worst = max(worst, abs(a[k]! - b[k]!)); compared += 1 }
+            }
+        }
+        scrollCheck("\(name) 往上捲之後同一個字的位置不變", worst == 0 && compared > 0, "比了 \(compared) 次，最多差 \(worst) pt")
+        // 從講稿中間開始播放：目前那個字還沒排版時回報的位置，要等於捲過去之後的位置
+        let target = scrollWords.count * 2 / 3
+        let highlighted = scrollWords.prefix(target).reduce(0) { $0 + $1.count + 1 }
+        let fromTop = render(f, offset: 0, viewport: 331, highlighted: highlighted).positions[target]
+        let there = render(f, offset: -((fromTop ?? 0) - 50), viewport: 331, highlighted: highlighted).positions[target]
+        scrollCheck("\(name) 還沒排版的起點位置＝捲過去之後的位置", fromTop != nil && fromTop == there,
+                    "還沒排版 \(fromTop ?? -1)，捲過去 \(there ?? -1)")
+    }
+    print("[\(label)] 捲動位置檢查：\(scrollFailures == 0 ? "全部通過" : "有 \(scrollFailures) 條沒過")")
+    if scrollFailures > 0 { exit(1) }
 }

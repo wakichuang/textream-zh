@@ -39,14 +39,14 @@ class TextreamService: NSObject, ObservableObject {
         return pages[currentPageIndex]
     }
 
-    func readText(_ text: String) {
+    func readText(_ text: String, startCharOffset: Int = 0) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
         launchedExternally = true
         hideMainWindow()
 
-        overlayController.show(text: trimmed, hasNextPage: hasNextPage) { [weak self] in
+        overlayController.show(text: trimmed, hasNextPage: hasNextPage, startCharOffset: startCharOffset) { [weak self] in
             self?.externalDisplayController.dismiss()
             self?.browserServer.hideContent()
             self?.onOverlayDismissed?()
@@ -75,11 +75,11 @@ class TextreamService: NSObject, ObservableObject {
         }
     }
 
-    func readCurrentPage() {
+    func readCurrentPage(startCharOffset: Int = 0) {
         let trimmed = currentPageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         readPages.insert(currentPageIndex)
-        readText(trimmed)
+        readText(trimmed, startCharOffset: startCharOffset)
     }
 
     func advanceToNextPage() {

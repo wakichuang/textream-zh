@@ -31,10 +31,19 @@ MUTATIONS = [
     ('拿掉停頓切句', 'ZhPromptMatcher.swift',
      'guard !fullTranscript.isEmpty else { return }',
      'guard false, !fullTranscript.isEmpty else { return }'),
+    ('拿掉往回跳暫停找回位置', 'ZhPromptMatcher.swift',
+     'if !state.holdAnchor,',
+     'if true,'),
+    ('停頓就解除暫停', 'ZhPromptMatcher.swift',
+     'state.recentPositions = []\n        state.anchorPrefix = fullTranscript\n    }',
+     'state.recentPositions = []\n        state.anchorPrefix = fullTranscript\n        state.holdAnchor = false\n    }'),
+    ('重念之後不解除暫停', 'ZhPromptMatcher.swift',
+     'if state.holdAnchor, readableUnits(',
+     'if false, readableUnits('),
 ]
 
 # 「讀音比對」的兩處要一起拿掉才算拿掉
-GROUPS = [[0], [1], [2, 3], [4], [5]]
+GROUPS = [[0], [1], [2, 3], [4], [5], [6], [7], [8]]
 
 unguarded = 0
 for group in GROUPS:

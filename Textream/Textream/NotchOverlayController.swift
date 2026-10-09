@@ -70,7 +70,7 @@ class NotchOverlayController: NSObject {
     private var escMonitor: Any?
     private var keepAwakeActivity: NSObjectProtocol?
 
-    func show(text: String, hasNextPage: Bool = false, onComplete: (() -> Void)? = nil) {
+    func show(text: String, hasNextPage: Bool = false, startCharOffset: Int = 0, onComplete: (() -> Void)? = nil) {
         self.onComplete = onComplete
         self.onNextPage = {
             TextreamService.shared.advanceToNextPage()
@@ -130,6 +130,10 @@ class NotchOverlayController: NSObject {
         // Word tracking & silence-paused need the microphone; classic does not
         if settings.listeningMode != .classic {
             speechRecognizer.start(with: text)
+        }
+        // 繁中改版：從編輯器游標所在的字開始（語音追蹤模式）
+        if settings.listeningMode == .wordTracking, startCharOffset > 0 {
+            speechRecognizer.jumpTo(charOffset: startCharOffset)
         }
     }
 

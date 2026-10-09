@@ -149,6 +149,9 @@ class SpeechRecognizer {
     private var lastJumpAt: Date = .distantPast
     /// 繁中改版：the matcher for the current script (rebuilt whenever the text changes).
     private var zhMatcher: ZhPromptMatcher?
+    /// 繁中改版：最後一次滾動或點字之後這麼多秒內講的話不比對（Apple 的辨識結果約慢半秒到一秒）。
+    private static let zhJumpSettle: TimeInterval = 1.0
+    private var zhHoldAnchor = false
 
     /// Update the source text while preserving the current recognized char count.
     /// Used by Director Mode to live-edit unread text without resetting read progress.
@@ -157,6 +160,7 @@ class SpeechRecognizer {
         let collapsed = words.joined(separator: " ")
         sourceText = collapsed
         zhMatcher = ZhPromptMatcher(words: words)
+        zhHoldAnchor = false
         normalizedSource = Self.normalize(collapsed)
         annotationRanges = SpeechTextAlignment.annotationRanges(in: collapsed)
         recognizedCharCount = min(preservingCharCount, collapsed.count)
@@ -178,6 +182,13 @@ class SpeechRecognizer {
         let clampedOffset = max(0, min(charOffset, sourceText.count))
         let targetOffset = advancePastAnnotations(from: clampedOffset)
         let distance = abs(targetOffset - recognizedCharCount)
+        // 繁中改版（issue #1）：往回跳之後先不找回位置，講到一半也能停在前面重講
+        if let zhMatcher {
+            var state = zhMatchState
+            zhMatcher.jump(to: targetOffset, lastTranscript: lastSpokenText, state: &state)
+            applyZhMatchState(state)
+            lastJumpAt = Date() // 遠距跳轉會重開辨識、提早 return，這裡先記，就定位期間才算得到
+        }
         recognizedCharCount = targetOffset
         matchStartOffset = targetOffset
         recentMatchPositions = []
@@ -200,6 +211,7 @@ class SpeechRecognizer {
         let collapsed = words.joined(separator: " ")
         sourceText = collapsed
         zhMatcher = ZhPromptMatcher(words: words)
+        zhHoldAnchor = false
         normalizedSource = Self.normalize(collapsed)
         annotationRanges = SpeechTextAlignment.annotationRanges(in: collapsed)
         recognizedCharCount = advancePastAnnotations(from: 0)
@@ -311,6 +323,7 @@ class SpeechRecognizer {
 
     func resume() {
         guard !sourceText.isEmpty else { return }
+        zhHoldAnchor = false // 繁中改版：暫停後重新開始是新的一段辨識，沒有講到一半的句子
         cleanupRecognition()
         retryCount = 0
         recognizedCharCount = advancePastAnnotations(from: recognizedCharCount)
@@ -815,6 +828,12 @@ class SpeechRecognizer {
     private func matchCharacters(spoken fullSpoken: String) {
         // Results computed before a jump can be delivered just after it —
         // don't match pre-jump speech against the text at the new offset.
+        // 繁中改版：滾動、點字當下到最後一次跳轉後 zhJumpSettle 秒，講的話一律丟掉（重新定錨），
+        // 讓使用者先滾到位置、就定位，之後才接著比對；不然邊滾邊講，高亮會被拉來拉去
+        if zhMatcher != nil, Date().timeIntervalSince(lastJumpAt) <= Self.zhJumpSettle {
+            spokenAnchorPrefix = fullSpoken
+            return
+        }
         guard Date().timeIntervalSince(lastJumpAt) > 0.3 else { return }
 
         // Ignore transcript from before the most recent jump. Trim by the
@@ -895,7 +914,8 @@ class SpeechRecognizer {
             recognized: recognizedCharCount,
             matchStart: matchStartOffset,
             recentPositions: recentMatchPositions,
-            anchorPrefix: spokenAnchorPrefix
+            anchorPrefix: spokenAnchorPrefix,
+            holdAnchor: zhHoldAnchor
         )
     }
 
@@ -906,6 +926,7 @@ class SpeechRecognizer {
         matchStartOffset = state.matchStart
         recentMatchPositions = state.recentPositions
         spokenAnchorPrefix = state.anchorPrefix
+        zhHoldAnchor = state.holdAnchor
     }
 
     private func advancePastAnnotations(from offset: Int) -> Int {

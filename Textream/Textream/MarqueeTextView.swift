@@ -251,6 +251,7 @@ struct SpeechScrollView: View {
     @State private var wheelLines = WheelLineJump.Accumulator()
     @State private var lastWheelJumpWord = 0
     @State private var lastWheelJumpAt: Date?
+    @State private var didInitialSeek = false
 
     private var readingPositionTransitionAnimation: Animation? {
         guard let duration = readingPositionTransitionDuration, duration > 0 else {
@@ -314,6 +315,12 @@ struct SpeechScrollView: View {
                     anchoredParagraphBreakBeforeWordIndices = paragraphBreakBeforeWordIndices
                     recalculateTracking(containerHeight: containerHeight)
                 }
+                // 繁中改版：從講稿中間開始播放（編輯器游標），一量到起點那個字就直接捲過去
+                if !didInitialSeek, !smoothScroll, highlightedCharCount > 0,
+                   positions[activeWordIndex()] != nil {
+                    didInitialSeek = true
+                    repositionTracking(toWordIndex: activeWordIndex())
+                }
             }
             .offset(y: scrollOffset + manualOffset)
             .animation(scrollOffsetAnimation, value: scrollOffset)
@@ -347,6 +354,7 @@ struct SpeechScrollView: View {
             }
             .onChange(of: words) { _, _ in
                 scrollOffset = initialScrollOffset(containerHeight: containerHeight)
+                didInitialSeek = false
                 manualOffset = 0
                 wordYPositions = [:]
                 stableTopLineCenter = nil
@@ -389,7 +397,10 @@ struct SpeechScrollView: View {
             }
             .onAppear {
                 containerHeight = geo.size.height
-                scrollOffset = initialScrollOffset(containerHeight: containerHeight)
+                // 繁中改版：從講稿中間開始播放時，已經捲到起點就不要再設回開頭
+                if !didInitialSeek {
+                    scrollOffset = initialScrollOffset(containerHeight: containerHeight)
+                }
             }
             .overlay(
                 ScrollWheelView(
@@ -857,6 +868,9 @@ struct WordFlowLayout: View {
                             .id(item.id)
                     }
                 }
+                // 繁中改版：每一行固定成估計的行高。上方被省略的行是用估計值撐開的，
+                // 實際行高不一樣的話，同一個字的位置會隨「省略了幾行」浮動，往上捲會被拉回去
+                .frame(height: rowHeight)
                 .frame(maxWidth: .infinity, alignment: rtl ? .trailing : .leading)
                 .padding(.top, beginsParagraph ? paragraphDividerExtraSpacing : 0)
                 .overlay(alignment: .top) {
@@ -892,7 +906,44 @@ struct WordFlowLayout: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: rtl ? .trailing : .leading)
+        .background(
+            // 繁中改版：每個字的位置用行號算出來回報（見 computedWordYPositions）
+            Color.clear.preference(
+                key: WordYPreferenceKey.self,
+                value: computedWordYPositions(lines: lines, visible: startLine..<endLine,
+                                              lineTop: lineTop, rowHeight: rowHeight,
+                                              paragraphPrefixCounts: paragraphPrefixCounts)
+            )
+        )
         .coordinateSpace(name: "flowLayout")
+    }
+
+    /// 繁中改版：每個字的垂直中心直接用行號算出來（每一行固定行高），不在畫面排版完才量。
+    /// 量出來的位置會隨捲動動畫、上方省略了幾行浮動，往上捲會被追蹤拉回去；算出來的只跟它在第幾行有關。
+    /// 回報排版範圍內的字，加上目前那個字（跟 SpeechScrollView.activeWordIndex 同一個）——
+    /// 從講稿中間開始播放時它可能還沒排版，畫面要靠它才捲得過去。
+    private func computedWordYPositions(lines: [[WordItem]], visible: Range<Int>,
+                                        lineTop: (Int) -> CGFloat, rowHeight: CGFloat,
+                                        paragraphPrefixCounts: [Int]) -> [Int: CGFloat] {
+        func midY(_ lineIndex: Int) -> CGFloat {
+            let beginsParagraph = paragraphPrefixCounts[lineIndex + 1] > paragraphPrefixCounts[lineIndex]
+            return lineTop(lineIndex) + (beginsParagraph ? paragraphDividerExtraSpacing : 0) + rowHeight / 2
+        }
+        var positions: [Int: CGFloat] = [:]
+        for lineIndex in visible {
+            let y = midY(lineIndex)
+            for item in lines[lineIndex] { positions[item.id] = y }
+        }
+        if highlightedCharCount > 0 {
+            for (lineIndex, line) in lines.enumerated() {
+                guard let item = line.first(where: { highlightedCharCount <= $0.charOffset + $0.word.count }) else {
+                    continue
+                }
+                positions[item.id] = midY(lineIndex)
+                break
+            }
+        }
+        return positions
     }
 
     private func wordView(for item: WordItem, isNextWord: Bool) -> some View {
@@ -915,14 +966,6 @@ struct WordFlowLayout: View {
                 // Never let SwiftUI truncate script text to "…".
                 .fixedSize()
                 .padding(.trailing, -item.trailingTrim)
-                .background(
-                    GeometryReader { wordGeo in
-                        Color.clear.preference(
-                            key: WordYPreferenceKey.self,
-                            value: [item.id: wordGeo.frame(in: .named("flowLayout")).midY]
-                        )
-                    }
-                )
                 .contentShape(Rectangle())
                 .onTapGesture {
                     onWordTap?(item.charOffset)
@@ -941,14 +984,6 @@ struct WordFlowLayout: View {
                 // Never let SwiftUI truncate script text to "…".
                 .fixedSize()
                 .padding(.trailing, -item.trailingTrim)
-                .background(
-                    GeometryReader { wordGeo in
-                        Color.clear.preference(
-                            key: WordYPreferenceKey.self,
-                            value: [item.id: wordGeo.frame(in: .named("flowLayout")).midY]
-                        )
-                    }
-                )
                 .contentShape(Rectangle())
                 .onTapGesture {
                     onWordTap?(item.charOffset)
@@ -970,14 +1005,6 @@ struct WordFlowLayout: View {
             // Never let SwiftUI truncate script text to "…".
             .fixedSize()
             .padding(.trailing, -item.trailingTrim)
-            .background(
-                GeometryReader { wordGeo in
-                    Color.clear.preference(
-                        key: WordYPreferenceKey.self,
-                        value: [item.id: wordGeo.frame(in: .named("flowLayout")).midY]
-                    )
-                }
-            )
             .contentShape(Rectangle())
             .onTapGesture {
                 onWordTap?(item.charOffset)
