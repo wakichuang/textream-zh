@@ -50,7 +50,7 @@
 3. 下載原始碼：到 [Releases](https://github.com/wakichuang/textream-zh/releases/latest) 下載最新版的原始碼壓縮檔並解壓縮，或用 git 指定版本 clone（直接 clone 拿到的是開發中的最新內容，不一定是發佈版）：
 
 ```bash
-git clone --branch v1.7.1.2 https://github.com/wakichuang/textream-zh.git
+git clone --branch v1.7.1.3 https://github.com/wakichuang/textream-zh.git
 ```
 
 4. 在下載的資料夾裡執行：
