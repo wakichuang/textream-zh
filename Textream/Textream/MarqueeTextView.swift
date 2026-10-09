@@ -247,6 +247,10 @@ struct SpeechScrollView: View {
     @State private var anchoredParagraphBreakBeforeWordIndices: Set<Int> = []
     @State private var isAnimatingReadingPositionChange = false
     @State private var readingPositionAnimationGeneration = 0
+    // 繁中改版：滾輪逐行跳轉（WheelLineJump.swift）
+    @State private var wheelLines = WheelLineJump.Accumulator()
+    @State private var lastWheelJumpWord = 0
+    @State private var lastWheelJumpAt: Date?
 
     private var readingPositionTransitionAnimation: Animation? {
         guard let duration = readingPositionTransitionDuration, duration > 0 else {
@@ -390,7 +394,8 @@ struct SpeechScrollView: View {
             .overlay(
                 ScrollWheelView(
                     onScroll: { delta in
-                        let canScroll = smoothScroll ? isListening : !isListening
+                        // 繁中改版：語音追蹤模式改由 onWheel 逐行跳轉，這裡只剩計時模式的平滑拖動
+                        let canScroll = smoothScroll && isListening
                         guard canScroll else { return }
 
                         // Pause timer when user starts scrolling in smooth mode
@@ -440,6 +445,26 @@ struct SpeechScrollView: View {
                                 }
                             }
                         }
+                    },
+                    onWheel: { deltaY, precise in
+                        // 繁中改版：語音追蹤模式滾一格跳一行，聆聽中、暫停中都可以
+                        guard !smoothScroll else { return }
+                        let lines = wheelLines.add(
+                            deltaY: deltaY,
+                            precise: precise,
+                            lineHeight: WheelLineJump.lineHeight(for: font)
+                        )
+                        guard lines != 0 else { return }
+                        // 連續滾動時，從上一格跳到的那一行接著數，不等辨識結果回來
+                        let now = Date()
+                        let continuing = lastWheelJumpAt.map { now.timeIntervalSince($0) < 0.6 } ?? false
+                        let base = continuing ? lastWheelJumpWord : activeWordIndex()
+                        guard let target = WheelLineJump.targetWord(
+                            positions: wordYPositions, fromWord: base, lines: lines
+                        ), target != base else { return }
+                        lastWheelJumpWord = target
+                        lastWheelJumpAt = now
+                        wheelJump(toWordIndex: target)
                     }
                 )
             )
@@ -535,6 +560,17 @@ struct SpeechScrollView: View {
         }
 
         applyTrackingTarget(target, force: true)
+    }
+
+    /// 繁中改版：滾輪跳轉跟點字跳轉走同一條路（onWordTap → SpeechRecognizer.jumpTo）。
+    private func wheelJump(toWordIndex wordIndex: Int) {
+        let charOffset = WheelLineJump.charOffset(ofWord: wordIndex, in: words)
+        manualOffset = 0
+        if charOffset < highlightedCharCount {
+            allowsNextBackwardTrackingUpdate = true
+        }
+        onWordTap?(charOffset)
+        repositionTracking(toWordIndex: wordIndex)
     }
 
     private var topReadingAnchor: CGFloat {
@@ -1070,29 +1106,37 @@ struct AudioWaveformView: View {
 struct ScrollWheelView: NSViewRepresentable {
     var onScroll: (CGFloat) -> Void
     var onScrollEnd: (() -> Void)?
+    /// 繁中改版：原始滾動量與是否為精確捲動（觸控板），給語音追蹤的逐行跳轉用。
+    var onWheel: ((CGFloat, Bool) -> Void)?
 
-    init(onScroll: @escaping (CGFloat) -> Void, onScrollEnd: (() -> Void)? = nil) {
+    init(onScroll: @escaping (CGFloat) -> Void, onScrollEnd: (() -> Void)? = nil,
+         onWheel: ((CGFloat, Bool) -> Void)? = nil) {
         self.onScroll = onScroll
         self.onScrollEnd = onScrollEnd
+        self.onWheel = onWheel
     }
 
     func makeNSView(context: Context) -> ScrollWheelNSView {
         let view = ScrollWheelNSView()
         view.onScroll = onScroll
         view.onScrollEnd = onScrollEnd
+        view.onWheel = onWheel
         return view
     }
 
     func updateNSView(_ nsView: ScrollWheelNSView, context: Context) {
         nsView.onScroll = onScroll
         nsView.onScrollEnd = onScrollEnd
+        nsView.onWheel = onWheel
     }
 }
 
 class ScrollWheelNSView: NSView {
     var onScroll: ((CGFloat) -> Void)?
     var onScrollEnd: (() -> Void)?
+    var onWheel: ((CGFloat, Bool) -> Void)?
     private var scrollMonitor: Any?
+    private var wheelEndWorkItem: DispatchWorkItem?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -1104,9 +1148,17 @@ class ScrollWheelNSView: NSView {
                     let delta = event.scrollingDeltaY
                     let scaled = event.hasPreciseScrollingDeltas ? delta : delta * 10
                     self.onScroll?(scaled)
+                    self.onWheel?(delta, event.hasPreciseScrollingDeltas)
 
                     if event.phase == .ended || event.momentumPhase == .ended {
                         self.onScrollEnd?()
+                    } else if event.phase.isEmpty && event.momentumPhase.isEmpty {
+                        // 繁中改版：一般滑鼠滾輪不送 phase，停 0.25 秒就當作滾完，
+                        // 不然計時模式滾完之後會一直停著
+                        self.wheelEndWorkItem?.cancel()
+                        let item = DispatchWorkItem { [weak self] in self?.onScrollEnd?() }
+                        self.wheelEndWorkItem = item
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
                     }
                 }
                 return event
@@ -1119,6 +1171,7 @@ class ScrollWheelNSView: NSView {
             NSEvent.removeMonitor(monitor)
             scrollMonitor = nil
         }
+        wheelEndWorkItem?.cancel()
         super.removeFromSuperview()
     }
 
