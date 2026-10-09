@@ -1,0 +1,52 @@
+name: 問題回報
+description: 念稿時高亮卡住、跑錯位置、字被吃掉、排版怪怪的，或是 App 打不開、裝不起來。
+title: "[問題] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        謝謝你花時間回報！描述越具體，我越快重現、越快修好。
+        講稿或錄音如果有不想公開的內容，換成一段可以公開、一樣會出問題的文字就好。
+  - type: textarea
+    id: what
+    attributes:
+      label: 發生了什麼事
+      description: 你看到了什麼，原本以為會怎樣。
+      placeholder: 念到第三段時臨時插了一段即興分享，再回到稿子，高亮就跳回第一段的開頭。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 怎麼重現
+      description: 一步一步寫下來，包含你念了哪一段、有沒有跳句或插話。
+      placeholder: |
+        1. 貼上下面「講稿片段」的文字
+        2. 按開始，從第一句念起
+        3. 念到第三段時插話 30 秒左右，再接著念稿子
+  - type: textarea
+    id: script
+    attributes:
+      label: 講稿片段
+      description: 出問題附近的幾句原文，直接貼文字（不要截圖），我才能拿去跑測試。
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Textream 繁中版版本
+      description: 螢幕最上方選單列「Textream」→「About Textream」可以看到。
+      placeholder: 1.7.1.2
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS 版本與機型
+      description: 左上角蘋果選單 →「關於這台 Mac」。
+      placeholder: macOS 26.0、MacBook Air M2
+  - type: textarea
+    id: extra
+    attributes:
+      label: 截圖或其他補充
+      description: 排版問題附截圖最清楚，可以直接把圖片拖進這個框。

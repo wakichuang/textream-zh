@@ -1,0 +1,35 @@
+name: 改善建議
+description: 想要新功能、覺得哪裡可以更好用，或是某種講稿的念法希望能支援。
+title: "[建議] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        謝謝你的點子！先說說你遇到的情境，比直接給解法更能幫我想出合適的做法。
+  - type: textarea
+    id: situation
+    attributes:
+      label: 你在什麼情境下用 Textream
+      description: 例如錄 Podcast、錄 YouTube、線上簡報、直播，用哪種螢幕擺法。
+      placeholder: 錄 YouTube 時把 Textream 放在鏡頭正下方，一次念 10 分鐘左右的稿子。
+    validations:
+      required: true
+  - type: textarea
+    id: pain
+    attributes:
+      label: 現在哪裡不方便
+      placeholder: 稿子裡有很多英文專有名詞，念的時候常常要停下來，高亮就跟丟了。
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你希望它變成怎樣
+      description: 想到的做法都可以寫，不確定做不做得到也沒關係。
+      placeholder: 英文單字念錯一兩個音也能算對上，或是可以先標記哪些詞可以跳過。
+  - type: textarea
+    id: extra
+    attributes:
+      label: 其他補充
+      description: 參考的 App、截圖、示意圖都歡迎。

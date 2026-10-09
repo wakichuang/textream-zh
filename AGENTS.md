@@ -28,6 +28,7 @@
 | 同檔 `leadingPunctuationTrim`、`WordItem.trailingTrim` | 開頭是全形開括號的字（「自、《原），尾端用負的 padding 扣回 Core Text 縮掉的量 | Core Text 會把開括號左半邊縮掉，但回報的寬度沒扣，字後面多出約 1.8 pt 的空隙 |
 | `Textream/Textream/ZhMatching/`（新增） | 移植 Textream for Windows 的中文比對：`ZhPinyinTable`（Unihan 讀音表，所有讀音）、`ZhNumbers`（國字／阿拉伯數字統一）、`ZhPromptMatcher`（字元層＋詞層、讀音集合比對、防拖走、找回位置）。門檻與 Windows 版相同：對不上前後各找 5 個、找回位置往後 400 個可讀單位、基本連續 5 個、每遠 50 個多 1 個 | 原版前後只容錯 5 個單位、字要完全一樣，跳過一兩句或子標題就卡住；同音錯字、Apple 把「三」寫成「3」也對不上 |
 | `UpdateChecker.swift`、`TextreamApp.swift` | 檢查更新改查 `wakichuang/textream-zh` 的 Releases；選單「檢查更新…」與所有對話框改成中文，有新版時提示下載原始碼後跑 `zh/install.sh`（1.7.1.2） | 原本查 `f/textream`，照提示更新會裝回原版、修正全部消失；英文介面加上 Release 只有原始碼，使用者不知道怎麼更新 |
+| `.github/ISSUE_TEMPLATE/`（新增） | 中文的「問題回報」「改善建議」兩張 issue 表單，README 加「回報問題與建議」一節與範例；GitHub 上的 Issues 於 2026-10-09 打開 | fork 預設關閉 Issues，朋友想回報問題、提建議沒有地方提；表單要求貼講稿文字與版本號，拿到就能直接跑測試重現 |
 | `SpeechRecognizer.swift` `matchCharacters`、`recordAudioLevel` | 有 `zhMatcher` 就交給它比對；停頓後再開口（語音活動偵測由不活躍轉活躍）時呼叫 `sentenceBreak`。原版的 `charLevelMatch`／`wordLevelMatch` 原封不動留著 | Apple 的辨識一段最長約一分鐘、不會每句重來；不切句的話，長段插話的漂移會累積，被常用詞一次確認跳太遠（ZH-20）。留著原版函式給測試當對照組，也讓合併上游衝突小 |
 
 ## 安裝到這台 Mac
