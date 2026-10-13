@@ -8,6 +8,10 @@
   <strong>為繁體中文講稿調整過的 Textream，語音追蹤提詞機（macOS）。</strong>
 </p>
 
+<p align="center">
+  用 Windows？請看 Textream for Windows 介紹網站：<a href="https://textream.readingoutpost.com/"><strong>textream.readingoutpost.com</strong></a>
+</p>
+
 ---
 
 ## 這是什麼
